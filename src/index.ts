@@ -10,13 +10,16 @@ dotenv.config();
 
 const server = new McpServer({
   name: "Elasticsearch MCP",
-  description: "A server that provides Elasticsearch queries",
+  description: "A server that retrieves data from Elasticsearch",
   version: "1.0.0",
   tools: [
     {
       name: "get-semantic-search-results",
-      description:
-        "Get the results of a semantic search query based on a query string",
+      description: `Get the results of a semantic search query based on a query string. 
+        
+        This query will return results based on the semantic field in the Elasticsearch index. 
+        
+        This tool must be used when the user is asking for information about a specific topic or concept.`,
       parameters: {
         q: {
           type: "string",
@@ -26,8 +29,11 @@ const server = new McpServer({
     },
     {
       name: "get-search-by-date-results",
-      description:
-        "Get the results of a search by date query based on a from and to date",
+      description: `Get the results of a search by date query based on a from and to date. 
+         
+         This query will return results based on the issue_date field in the Elasticsearch index. 
+         
+         This tool must be used when the user is asking for information about a specific date range.`,
       parameters: {
         from: {
           type: "string",
@@ -55,7 +61,11 @@ const _client = new Client({
 
 const getSearchByDateResults = server.tool(
   "get-search-by-date-results",
-  "Get the results of a search by date query based on a from and to date",
+  `Get the results of a search by date query based on a from and to date. 
+  
+  This query will return results based on the issue_date field in the Elasticsearch index. 
+  
+  This tool must be used when the user is asking for information about a specific date range.`,
   {
     from: z.string(),
     to: z.string(),
@@ -116,7 +126,11 @@ const getSearchByDateResults = server.tool(
 
 const getSemanticSearchResults = server.tool(
   "get-semantic-search-results",
-  "Get the results of a semantic search query based on a query string",
+  `Get the results of a semantic search query based on a query string. 
+  
+  This query will return results based on the semantic field in the Elasticsearch index. 
+  
+  This tool must be used when the user is asking for information about a specific topic or concept.`,
   {
     q: z.string(),
   },
