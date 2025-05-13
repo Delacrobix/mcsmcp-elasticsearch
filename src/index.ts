@@ -10,7 +10,8 @@ dotenv.config();
 
 const server = new McpServer({
   name: "Elasticsearch MCP",
-  description: "A server that retrieves data from Elasticsearch",
+  description:
+    "A server that retrieves data related with invoices from Elasticsearch",
   version: "1.0.0",
   tools: [
     {
@@ -19,7 +20,10 @@ const server = new McpServer({
         
         This query will return results based on the semantic field in the Elasticsearch index. 
         
-        This tool must be used when the user is asking for information about a specific topic or concept.`,
+        This tool must be used when the user is asking for information about a specific topic or concept.
+        
+        All the results will be related with invoices.
+        `,
       parameters: {
         q: {
           type: "string",
@@ -33,7 +37,9 @@ const server = new McpServer({
          
          This query will return results based on the issue_date field in the Elasticsearch index. 
          
-         This tool must be used when the user is asking for information about a specific date range.`,
+         This tool must be used when the user is asking for information about a specific date range.
+         
+         All the results will be related with invoices.`,
       parameters: {
         from: {
           type: "string",
@@ -65,7 +71,9 @@ const getSearchByDateResults = server.tool(
   
   This query will return results based on the issue_date field in the Elasticsearch index. 
   
-  This tool must be used when the user is asking for information about a specific date range.`,
+  This tool must be used when the user is asking for information about a specific date range.
+  
+  All the results will be related with invoices.`,
   {
     from: z.string(),
     to: z.string(),
@@ -130,7 +138,9 @@ const getSemanticSearchResults = server.tool(
   
   This query will return results based on the semantic field in the Elasticsearch index. 
   
-  This tool must be used when the user is asking for information about a specific topic or concept.`,
+  This tool must be used when the user is asking for information about a specific topic or concept.
+  
+  All the results will be related with invoices.`,
   {
     q: z.string(),
   },
