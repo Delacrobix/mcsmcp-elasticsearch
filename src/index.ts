@@ -2,11 +2,21 @@ import express, { Request, Response } from "express";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 
+import dotenv from "dotenv";
+import { Client } from "@elastic/elasticsearch";
+
+dotenv.config();
+
 const server = new McpServer({
   name: "jokesMCP",
   description: "A server that provides jokes",
   version: "1.0.0",
   tools: [
+    {
+      name: "get-match-all-query-results",
+      description: "Get the results of a match all query",
+      parameters: {},
+    },
     {
       name: "get-chuck-joke",
       description: "Get a random Chuck Norris joke",
@@ -29,6 +39,38 @@ const server = new McpServer({
     },
   ],
 });
+
+const ELASTICSEARCH_ENDPOINT = process.env.ELASTICSEARCH_ENDPOINT;
+const ELASTICSEARCH_API_KEY = process.env.ELASTICSEARCH_API_KEY;
+const INDEX = process.env.INDEX_NAME;
+
+const _client = new Client({
+  node: ELASTICSEARCH_ENDPOINT,
+  auth: {
+    apiKey: ELASTICSEARCH_API_KEY ?? "",
+  },
+});
+
+const getMatchAllQueryResults = server.tool(
+  "get-match-all-query-results",
+  "Get the results of a match all query",
+  async () => {
+    const results = await _client.search({
+      index: INDEX,
+      query: {
+        match_all: {},
+      },
+    });
+    return {
+      content: [
+        {
+          type: "text",
+          text: results.hits.hits.map((hit) => hit._source).join("\n"),
+        },
+      ],
+    };
+  }
+);
 
 // Get Chuck Norris joke tool
 const getChuckJoke = server.tool(
@@ -118,7 +160,7 @@ app.get("/sse", async (req: Request, res: Response) => {
   // Get the full URI from the request
   const host = req.get("host");
 
-  const fullUri = `https://${host}/jokes`;
+  const fullUri = `https://${host}/es-queries`;
   const transport = new SSEServerTransport(fullUri, res);
 
   transports[transport.sessionId] = transport;
@@ -128,7 +170,7 @@ app.get("/sse", async (req: Request, res: Response) => {
   await server.connect(transport);
 });
 
-app.post("/jokes", async (req: Request, res: Response) => {
+app.post("/es-queries", async (req: Request, res: Response) => {
   const sessionId = req.query.sessionId as string;
   const transport = transports[sessionId];
   if (transport) {
@@ -139,7 +181,7 @@ app.post("/jokes", async (req: Request, res: Response) => {
 });
 
 app.get("/", (_req, res) => {
-  res.send("The Jokes MCP server is running!");
+  res.send("MCP server is running!");
 });
 
 const PORT = process.env.PORT || 3001;
