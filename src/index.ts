@@ -1,6 +1,7 @@
 import express, { Request, Response } from "express";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
+import { z } from "zod";
 
 import dotenv from "dotenv";
 import { Client } from "@elastic/elasticsearch";
@@ -8,34 +9,35 @@ import { Client } from "@elastic/elasticsearch";
 dotenv.config();
 
 const server = new McpServer({
-  name: "jokesMCP",
-  description: "A server that provides jokes",
+  name: "Elasticsearch MCP",
+  description: "A server that provides Elasticsearch queries",
   version: "1.0.0",
   tools: [
     {
-      name: "get-match-all-query-results",
-      description: "Get the results of a match all query",
-      parameters: {},
+      name: "get-semantic-search-results",
+      description:
+        "Get the results of a semantic search query based on a query string",
+      parameters: {
+        q: {
+          type: "string",
+          description: "The query string to search for",
+        },
+      },
     },
     {
-      name: "get-chuck-joke",
-      description: "Get a random Chuck Norris joke",
-      parameters: {},
-    },
-    {
-      name: "get-chuck-categories",
-      description: "Get all available categories for Chuck Norris jokes",
-      parameters: {},
-    },
-    {
-      name: "get-dad-joke",
-      description: "Get a random dad joke",
-      parameters: {},
-    },
-    {
-      name: "get-yo-mama-joke",
-      description: "Get a random Yo Mama joke",
-      parameters: {},
+      name: "get-search-by-date-results",
+      description:
+        "Get the results of a search by date query based on a from and to date",
+      parameters: {
+        from: {
+          type: "string",
+          description: "The start date of the search",
+        },
+        to: {
+          type: "string",
+          description: "The end date of the search",
+        },
+      },
     },
   ],
 });
@@ -51,99 +53,108 @@ const _client = new Client({
   },
 });
 
-const getMatchAllQueryResults = server.tool(
-  "get-match-all-query-results",
-  "Get the results of a match all query",
-  async () => {
+const getSearchByDateResults = server.tool(
+  "get-search-by-date-results",
+  "Get the results of a search by date query based on a from and to date",
+  {
+    from: z.string(),
+    to: z.string(),
+  },
+  async (input) => {
+    const { from, to } = input;
+
+    if (!from || !to) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: "Both fromDate and toDate parameters are required",
+          },
+        ],
+        isError: true,
+        _meta: { code: "MISSING_PARAMETERS" },
+      };
+    }
+
+    const formattedFrom = formatDate(new Date(from));
+    const formattedTo = formatDate(new Date(to));
+
+    function formatDate(date: Date) {
+      const day = String(date.getDate()).padStart(2, "0");
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const year = date.getFullYear();
+      return `${day}/${month}/${year}`;
+    }
+
     const results = await _client.search({
       index: INDEX,
       query: {
-        match_all: {},
+        range: {
+          issue_date: {
+            gte: formattedFrom,
+            lte: formattedTo,
+            format: "dd/MM/yyyy",
+          },
+        },
       },
     });
+
+    const populatedResults = results.hits.hits.map((hit) => {
+      return JSON.stringify(hit._source);
+    });
+
     return {
       content: [
         {
           type: "text",
-          text: results.hits.hits.map((hit) => hit._source).join("\n"),
+          text: populatedResults.join("\n"),
         },
       ],
     };
   }
 );
 
-// Get Chuck Norris joke tool
-const getChuckJoke = server.tool(
-  "get-chuck-joke",
-  "Get a random Chuck Norris joke",
-  async () => {
-    const response = await fetch("https://api.chucknorris.io/jokes/random");
-    const data = await response.json();
-    return {
-      content: [
-        {
-          type: "text",
-          text: data.value,
-        },
-      ],
-    };
-  }
-);
+const getSemanticSearchResults = server.tool(
+  "get-semantic-search-results",
+  "Get the results of a semantic search query based on a query string",
+  {
+    q: z.string(),
+  },
+  async (input) => {
+    const { q } = input;
 
-// Get Chuck Norris joke categories tool
-const getChuckCategories = server.tool(
-  "get-chuck-categories",
-  "Get all available categories for Chuck Norris jokes",
-  async () => {
-    const response = await fetch("https://api.chucknorris.io/jokes/categories");
-    const data = await response.json();
-    return {
-      content: [
-        {
-          type: "text",
-          text: data.join(", "),
-        },
-      ],
-    };
-  }
-);
+    if (!q) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: "The query parameter is required",
+          },
+        ],
+        isError: true,
+        _meta: { code: "MISSING_PARAMETERS" },
+      };
+    }
 
-// Get Dad joke tool
-const getDadJoke = server.tool(
-  "get-dad-joke",
-  "Get a random dad joke",
-  async () => {
-    const response = await fetch("https://icanhazdadjoke.com/", {
-      headers: {
-        Accept: "application/json",
+    const results = await _client.search({
+      index: INDEX,
+      query: {
+        semantic: {
+          field: "semantic_field",
+          query: q,
+        },
       },
     });
-    const data = await response.json();
-    return {
-      content: [
-        {
-          type: "text",
-          text: data.joke,
-        },
-      ],
-    };
-  }
-);
 
-// Get Yo Mama joke tool
-const getYoMamaJoke = server.tool(
-  "get-yo-mama-joke",
-  "Get a random Yo Mama joke",
-  async () => {
-    const response = await fetch(
-      "https://www.yomama-jokes.com/api/v1/jokes/random"
-    );
-    const data = await response.json();
+    const populatedResults = results.hits.hits.map((hit) => {
+      return JSON.stringify(hit._source);
+    });
+
     return {
       content: [
         {
           type: "text",
-          text: data.joke,
+          text: populatedResults.join("\n"),
         },
       ],
     };
