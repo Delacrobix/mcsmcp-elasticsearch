@@ -1,8 +1,8 @@
 import express, { Request, Response } from "express";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
-import { z } from "zod";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 
+import { z } from "zod";
 import dotenv from "dotenv";
 import { Client } from "@elastic/elasticsearch";
 
@@ -66,6 +66,9 @@ const getSearchByDateResults = server.tool(
   async (input) => {
     const { from, to } = input;
 
+    console.log("from", from);
+    console.log("to", to);
+
     if (!from || !to) {
       return {
         content: [
@@ -106,6 +109,8 @@ const getSearchByDateResults = server.tool(
       return JSON.stringify(hit._source);
     });
 
+    console.log("populatedResults", populatedResults);
+
     return {
       content: [
         {
@@ -131,6 +136,8 @@ const getSemanticSearchResults = server.tool(
   },
   async (input) => {
     const { q } = input;
+
+    console.log("q", q);
 
     if (!q) {
       return {
@@ -159,6 +166,8 @@ const getSemanticSearchResults = server.tool(
       return JSON.stringify(hit._source);
     });
 
+    console.log("populatedResults", populatedResults);
+
     return {
       content: [
         {
@@ -172,40 +181,111 @@ const getSemanticSearchResults = server.tool(
 
 const app = express();
 
-// to support multiple simultaneous connections we have a lookup object from
-// sessionId to transport
-const transports: { [sessionId: string]: SSEServerTransport } = {};
+app.use(express.json());
 
-app.get("/sse", async (req: Request, res: Response) => {
-  // Get the full URI from the request
-  const host = req.get("host");
-
-  const fullUri = `https://${host}/es-queries`;
-  const transport = new SSEServerTransport(fullUri, res);
-
-  transports[transport.sessionId] = transport;
-  res.on("close", () => {
-    delete transports[transport.sessionId];
+const transport: StreamableHTTPServerTransport =
+  new StreamableHTTPServerTransport({
+    sessionIdGenerator: undefined, // set to undefined for stateless servers
   });
-  await server.connect(transport);
-});
 
-app.post("/es-queries", async (req: Request, res: Response) => {
-  const sessionId = req.query.sessionId as string;
-  const transport = transports[sessionId];
-  if (transport) {
-    await transport.handlePostMessage(req, res);
-  } else {
-    res.status(400).send("No transport found for sessionId");
+// Setup routes for the server
+const setupServer = async () => {
+  await server.connect(transport);
+};
+
+app.post("/mcp", async (req: Request, res: Response) => {
+  console.log("Received MCP request:", req.body);
+  try {
+    await transport.handleRequest(req, res, req.body);
+  } catch (error) {
+    console.error("Error handling MCP request:", error);
+    if (!res.headersSent) {
+      res.status(500).json({
+        jsonrpc: "2.0",
+        error: {
+          code: -32603,
+          message: "Internal server error",
+        },
+        id: null,
+      });
+    }
   }
 });
 
-app.get("/", (_req, res) => {
-  res.send("MCP server is running!");
+app.get("/mcp", async (req: Request, res: Response) => {
+  console.log("Received GET MCP request");
+  res.writeHead(405).end(
+    JSON.stringify({
+      jsonrpc: "2.0",
+      error: {
+        code: -32000,
+        message: "Method not allowed.",
+      },
+      id: null,
+    })
+  );
 });
 
-const PORT = process.env.PORT || 3001;
-
-app.listen(PORT, () => {
-  console.log(`✅ Server is running at http://localhost:${PORT}`);
+app.delete("/mcp", async (req: Request, res: Response) => {
+  console.log("Received DELETE MCP request");
+  res.writeHead(405).end(
+    JSON.stringify({
+      jsonrpc: "2.0",
+      error: {
+        code: -32000,
+        message: "Method not allowed.",
+      },
+      id: null,
+    })
+  );
 });
+
+// Start the server
+const PORT = process.env.PORT || 3000;
+setupServer()
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(`MCP Streamable HTTP Server listening on port ${PORT}`);
+    });
+  })
+  .catch((error) => {
+    console.error("Failed to set up the server:", error);
+    process.exit(1);
+  });
+// // to support multiple simultaneous connections we have a lookup object from
+// // sessionId to transport
+// const transports: { [sessionId: string]: SSEServerTransport } = {};
+
+// app.get("/sse", async (req: Request, res: Response) => {
+//   // Get the full URI from the request
+//   const host = req.get("host");
+
+//   const fullUri = `https://${host}/es-queries`;
+//   const transport = new SSEServerTransport(fullUri, res);
+
+//   transports[transport.sessionId] = transport;
+//   res.on("close", () => {
+//     delete transports[transport.sessionId];
+//   });
+//   await server.connect(transport);
+// });
+
+// app.post("/es-queries", async (req: Request, res: Response) => {
+//   const sessionId = req.query.sessionId as string;
+//   const transport = transports[sessionId];
+//   if (transport) {
+//     await transport.handlePostMessage(req, res);
+//   } else {
+//     res.status(400).send("No transport found for sessionId");
+//   }
+// });
+
+// app.get("/", (_req, res) => {
+//   res.send("MCP server is running!");
+// });
+
+// const PORT = process.env.PORT || 3000;
+
+// app.listen(PORT, () => {
+//   console.log(`✅ Server is running at http://localhost:${PORT}`);
+// });
