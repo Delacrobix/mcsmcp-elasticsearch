@@ -166,7 +166,7 @@ const getSemanticSearchResults = server.tool(
       return JSON.stringify(hit._source);
     });
 
-    console.log("populatedResults", populatedResults);
+    console.log("populatedResult1", populatedResults);
 
     return {
       content: [
